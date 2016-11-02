@@ -20,11 +20,11 @@ const (
 
 func parseTimestamp(timestamp string) (restoreTime time.Time) {
 
-	i, err := strconv.ParseInt(timestamp, 10, 64)
+	tstamp, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return time.Unix(i, 0)
+	return time.Unix(tstamp, 0)
 
 }
 
