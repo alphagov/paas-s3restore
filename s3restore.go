@@ -7,6 +7,10 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 const (
@@ -98,45 +102,55 @@ func parseArguments() ParsedArgs {
 }
 
 func main() {
-	args := parseArguments()
-	fmt.Printf("%#v\n", args)
-	/*
-		sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
-		if err != nil {
-			log.Fatal("failed to create session,", err)
-		}
+	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
+	if err != nil {
+		log.Fatal("failed to create session,", err)
+	}
 
-		svc := s3.New(sess)
+	svc := s3.New(sess)
+
+	args := parseArguments()
+
+	switch args.CommandName {
+	case "restore":
+		bucket := args.Args["bucket"]
+		prefix := args.Args["prefix"]
+		timestamp := args.Args["timestamp"]
 
 		listVersionsParams := &s3.ListObjectVersionsInput{
-			Bucket: aws.String(*bucket),
-			Prefix: aws.String(*prefix),
+			Bucket: aws.String(bucket),
+			Prefix: aws.String(prefix),
 		}
 
 		listVersionResp, err := svc.ListObjectVersions(listVersionsParams)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		restoreTime := parseTimestamp(*timestamp)
 
+		restoreTime := parseTimestamp(timestamp)
+		var restored map[string]bool
+		restored = make(map[string]bool)
 		for _, version := range listVersionResp.Versions {
-			if restoreTime.After(*version.LastModified) {
-				fmt.Printf("Restoring...\n %s\n", version)
+			if _, ok := restored[*version.Key]; !ok {
+				// Amazon S3 returns object versions in the order in which they were stored,
+				// with the most recently stored returned first.
+				if restoreTime.After(*version.LastModified) {
+					fmt.Printf("Restoring...\n %s\n", version)
 
-				copyParams := &s3.CopyObjectInput{
-					Bucket:     aws.String(*bucket),
-					CopySource: aws.String(*bucket + "/" + *version.Key + "?versionId=" + *version.VersionId),
-					Key:        aws.String(*version.Key),
-				}
-				copyResp, err := svc.CopyObject(copyParams)
-				fmt.Printf("Restored:\n %s\n", copyResp)
-				if err != nil {
-					fmt.Println(err.Error())
-					return
+					copyParams := &s3.CopyObjectInput{
+						Bucket:     aws.String(bucket),
+						CopySource: aws.String(bucket + "/" + *version.Key + "?versionId=" + *version.VersionId),
+						Key:        aws.String(*version.Key),
+					}
+					copyResp, err := svc.CopyObject(copyParams)
+					if err != nil {
+						log.Fatal(err.Error())
 
+					}
+					restored[*version.Key] = true
+					fmt.Printf("Restored:\n %s\n", copyResp)
 				}
-				break
 			}
 		}
-	*/
+	}
 }
