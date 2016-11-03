@@ -152,5 +152,7 @@ func main() {
 				}
 			}
 		}
+	case "list":
+		log.Fatal("Not impleneted")
 	}
 }
