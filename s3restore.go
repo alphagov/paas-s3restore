@@ -38,6 +38,60 @@ func NewS3svc() *S3svc {
 	}
 }
 
+func (s *S3svc) ListVersions(bucket, prefix string) (*s3.ListObjectVersionsOutput, error) {
+
+	listVersionsParams := &s3.ListObjectVersionsInput{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	}
+
+	listVersionResp, err := s.Svc.ListObjectVersions(listVersionsParams)
+	if err != nil {
+		return nil, err
+	}
+	return listVersionResp, nil
+}
+
+func (s *S3svc) CopyObject(bucket, key, version string) (*s3.CopyObjectOutput, error) {
+
+	copyParams := &s3.CopyObjectInput{
+		Bucket:     aws.String(bucket),
+		CopySource: aws.String(bucket + "/" + key + "?versionId=" + version),
+		Key:        aws.String(key),
+	}
+	copyResp, err := s.Svc.CopyObject(copyParams)
+	if err != nil {
+		return nil, err
+	}
+	return copyResp, nil
+}
+
+func (s *S3svc) RestoreObjects(bucket string, versions *s3.ListObjectVersionsOutput, restoreTime time.Time) error {
+
+	var restored map[string]bool
+	restored = make(map[string]bool)
+	for _, version := range versions.Versions {
+		if _, ok := restored[*version.Key]; !ok {
+			// Amazon S3 returns object versions in the order in which they were stored,
+			// with the most recently stored returned first.
+			if restoreTime.After(*version.LastModified) {
+				var copyResp *s3.CopyObjectOutput
+				if !*version.IsLatest {
+					fmt.Printf("Restoring...\n %s\n", version)
+					var err error
+					copyResp, err = s.CopyObject(bucket, *version.Key, *version.VersionId)
+					if err != nil {
+						return err
+					}
+					fmt.Printf("Restored:\n %s\n", copyResp)
+				}
+				restored[*version.Key] = true
+			}
+		}
+	}
+	return nil
+}
+
 func parseTimestamp(timestamp string) (restoreTime time.Time) {
 
 	i, err := strconv.ParseInt(timestamp, 10, 64)
@@ -84,14 +138,13 @@ func parseArguments() ParsedArgs {
 
 	switch os.Args[1] {
 	case "restore":
-		if err := restoreCommand.Parse(os.Args[2:]); err == nil {
-			if *bkt == "" || *ts == "" {
-				restoreCommand.Usage = printUsage("restore", restoreCommand.PrintDefaults)
-				restoreCommand.Usage()
-				os.Exit(2)
-			}
-		} else {
+		if err := restoreCommand.Parse(os.Args[2:]); err != nil {
 			log.Fatal(err)
+		}
+		if *bkt == "" || *ts == "" {
+			restoreCommand.Usage = printUsage("restore", restoreCommand.PrintDefaults)
+			restoreCommand.Usage()
+			os.Exit(2)
 		}
 		return ParsedArgs{
 			CommandName: "restore",
@@ -103,73 +156,18 @@ func parseArguments() ParsedArgs {
 		}
 
 	case "list":
-		if err := listCommand.Parse(os.Args[2:]); err == nil {
-			restoreCommand.Usage = printUsage("list", listCommand.PrintDefaults)
-			restoreCommand.Usage()
-			fmt.Println(*since)
-			os.Exit(2)
-		} else {
+		if err := listCommand.Parse(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
+		restoreCommand.Usage = printUsage("list", listCommand.PrintDefaults)
+		restoreCommand.Usage()
+		fmt.Println(*since)
+		os.Exit(2)
 	default:
 		fmt.Fprintf(os.Stderr, "%q is not valid command.\n", os.Args[1])
 		os.Exit(2)
 	}
 	return ParsedArgs{}
-}
-
-func (s *S3svc) ListVersions(bucket, prefix string) (*s3.ListObjectVersionsOutput, error) {
-
-	listVersionsParams := &s3.ListObjectVersionsInput{
-		Bucket: aws.String(bucket),
-		Prefix: aws.String(prefix),
-	}
-
-	listVersionResp, err := s.Svc.ListObjectVersions(listVersionsParams)
-	if err != nil {
-		return nil, err
-	}
-	return listVersionResp, nil
-}
-
-func (s *S3svc) CopyObject(bucket, key, version string) (*s3.CopyObjectOutput, error) {
-
-	copyParams := &s3.CopyObjectInput{
-		Bucket:     aws.String(bucket),
-		CopySource: aws.String(bucket + "/" + key + "?versionId=" + version),
-		Key:        aws.String(key),
-	}
-	copyResp, err := s.Svc.CopyObject(copyParams)
-	if err != nil {
-		return nil, err
-	}
-	return copyResp, nil
-}
-
-func (s *S3svc) RestoreObjects(bucket string, versions *s3.ListObjectVersionsOutput, restoreTime time.Time) error {
-
-	var restored map[string]bool
-	restored = make(map[string]bool)
-	for _, version := range versions.Versions {
-		if _, ok := restored[*version.Key]; !ok {
-			// Amazon S3 returns object versions in the order in which they were stored,
-			// with the most recently stored returned first.
-			if restoreTime.After(*version.LastModified) {
-				fmt.Printf("Restoring...\n %s\n", version)
-				var copyResp *s3.CopyObjectOutput
-				if !*version.IsLatest {
-					var err error
-					copyResp, err = s.CopyObject(bucket, *version.Key, *version.VersionId)
-					if err != nil {
-						return err
-					}
-				}
-				restored[*version.Key] = true
-				fmt.Printf("Restored:\n %s\n", copyResp)
-			}
-		}
-	}
-	return nil
 }
 
 func main() {
