@@ -131,6 +131,20 @@ func (s *S3svc) ListVersions(bucket, prefix string) (*s3.ListObjectVersionsOutpu
 	return listVersionResp, nil
 }
 
+func (s *S3svc) CopyObject(bucket, key, version string) (*s3.CopyObjectOutput, error) {
+
+	copyParams := &s3.CopyObjectInput{
+		Bucket:     aws.String(bucket),
+		CopySource: aws.String(bucket + "/" + key + "?versionId=" + version),
+		Key:        aws.String(key),
+	}
+	copyResp, err := s.Svc.CopyObject(copyParams)
+	if err != nil {
+		return nil, err
+	}
+	return copyResp, nil
+}
+
 func main() {
 	s3svc := NewS3svc()
 	args := parseArguments()
@@ -156,16 +170,9 @@ func main() {
 				// with the most recently stored returned first.
 				if restoreTime.After(*version.LastModified) {
 					fmt.Printf("Restoring...\n %s\n", version)
-
-					copyParams := &s3.CopyObjectInput{
-						Bucket:     aws.String(bucket),
-						CopySource: aws.String(bucket + "/" + *version.Key + "?versionId=" + *version.VersionId),
-						Key:        aws.String(*version.Key),
-					}
-					copyResp, err := s3svc.Svc.CopyObject(copyParams)
+					copyResp, err := s3svc.CopyObject(bucket, *version.Key, *version.VersionId)
 					if err != nil {
 						log.Fatal(err.Error())
-
 					}
 					restored[*version.Key] = true
 					fmt.Printf("Restored:\n %s\n", copyResp)
