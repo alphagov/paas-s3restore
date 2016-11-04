@@ -22,6 +22,22 @@ type ParsedArgs struct {
 	Args        map[string]string
 }
 
+type S3svc struct {
+	Svc *s3.S3
+}
+
+func NewS3svc() *S3svc {
+
+	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
+	if err != nil {
+		log.Fatal("failed to create session,", err)
+	}
+
+	return &S3svc{
+		Svc: s3.New(sess),
+	}
+}
+
 func parseTimestamp(timestamp string) (restoreTime time.Time) {
 
 	i, err := strconv.ParseInt(timestamp, 10, 64)
@@ -101,14 +117,22 @@ func parseArguments() ParsedArgs {
 	return ParsedArgs{}
 }
 
-func main() {
-	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
-	if err != nil {
-		log.Fatal("failed to create session,", err)
+func (s *S3svc) ListVersions(bucket, prefix string) (*s3.ListObjectVersionsOutput, error) {
+
+	listVersionsParams := &s3.ListObjectVersionsInput{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
 	}
 
-	svc := s3.New(sess)
+	listVersionResp, err := s.Svc.ListObjectVersions(listVersionsParams)
+	if err != nil {
+		return nil, err
+	}
+	return listVersionResp, nil
+}
 
+func main() {
+	s3svc := NewS3svc()
 	args := parseArguments()
 
 	switch args.CommandName {
@@ -117,17 +141,13 @@ func main() {
 		prefix := args.Args["prefix"]
 		timestamp := args.Args["timestamp"]
 
-		listVersionsParams := &s3.ListObjectVersionsInput{
-			Bucket: aws.String(bucket),
-			Prefix: aws.String(prefix),
-		}
-
-		listVersionResp, err := svc.ListObjectVersions(listVersionsParams)
+		listVersionResp, err := s3svc.ListVersions(bucket, prefix)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
 
 		restoreTime := parseTimestamp(timestamp)
+
 		var restored map[string]bool
 		restored = make(map[string]bool)
 		for _, version := range listVersionResp.Versions {
@@ -142,7 +162,7 @@ func main() {
 						CopySource: aws.String(bucket + "/" + *version.Key + "?versionId=" + *version.VersionId),
 						Key:        aws.String(*version.Key),
 					}
-					copyResp, err := svc.CopyObject(copyParams)
+					copyResp, err := s3svc.Svc.CopyObject(copyParams)
 					if err != nil {
 						log.Fatal(err.Error())
 
