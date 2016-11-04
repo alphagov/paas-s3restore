@@ -13,6 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+var (
+	Version = "Placeholder"
+)
+
 const (
 	region = "eu-west-1"
 )
@@ -49,6 +53,7 @@ func parseTimestamp(timestamp string) (restoreTime time.Time) {
 }
 
 func printUsage(command string, usage func()) func() {
+	fmt.Fprintf(os.Stderr, "s3r version %s\n", Version)
 	fmt.Fprintf(os.Stderr, "usage: s3r <command> <args>\n")
 	switch command {
 	case "restore":
