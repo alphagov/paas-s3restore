@@ -160,9 +160,13 @@ func (s *S3svc) RestoreObjects(bucket string, versions *s3.ListObjectVersionsOut
 			// with the most recently stored returned first.
 			if restoreTime.After(*version.LastModified) {
 				fmt.Printf("Restoring...\n %s\n", version)
-				copyResp, err := s.CopyObject(bucket, *version.Key, *version.VersionId)
-				if err != nil {
-					return err
+				var copyResp *s3.CopyObjectOutput
+				if !*version.IsLatest {
+					var err error
+					copyResp, err = s.CopyObject(bucket, *version.Key, *version.VersionId)
+					if err != nil {
+						return err
+					}
 				}
 				restored[*version.Key] = true
 				fmt.Printf("Restored:\n %s\n", copyResp)
