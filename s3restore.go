@@ -17,10 +17,6 @@ var (
 	Version = "Placeholder"
 )
 
-const (
-	region = "eu-west-1"
-)
-
 type ParsedArgs struct {
 	CommandName string
 	Args        map[string]string
@@ -32,7 +28,7 @@ type S3svc struct {
 
 func NewS3svc() *S3svc {
 
-	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
+	sess, err := session.NewSession()
 	if err != nil {
 		log.Fatal("failed to create session,", err)
 	}
