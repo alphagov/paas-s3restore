@@ -145,6 +145,28 @@ func (s *S3svc) CopyObject(bucket, key, version string) (*s3.CopyObjectOutput, e
 	return copyResp, nil
 }
 
+func (s *S3svc) RestoreObjects(bucket string, versions *s3.ListObjectVersionsOutput, restoreTime time.Time) error {
+
+	var restored map[string]bool
+	restored = make(map[string]bool)
+	for _, version := range versions.Versions {
+		if _, ok := restored[*version.Key]; !ok {
+			// Amazon S3 returns object versions in the order in which they were stored,
+			// with the most recently stored returned first.
+			if restoreTime.After(*version.LastModified) {
+				fmt.Printf("Restoring...\n %s\n", version)
+				copyResp, err := s.CopyObject(bucket, *version.Key, *version.VersionId)
+				if err != nil {
+					return err
+				}
+				restored[*version.Key] = true
+				fmt.Printf("Restored:\n %s\n", copyResp)
+			}
+		}
+	}
+	return nil
+}
+
 func main() {
 	s3svc := NewS3svc()
 	args := parseArguments()
@@ -161,24 +183,11 @@ func main() {
 		}
 
 		restoreTime := parseTimestamp(timestamp)
-
-		var restored map[string]bool
-		restored = make(map[string]bool)
-		for _, version := range listVersionResp.Versions {
-			if _, ok := restored[*version.Key]; !ok {
-				// Amazon S3 returns object versions in the order in which they were stored,
-				// with the most recently stored returned first.
-				if restoreTime.After(*version.LastModified) {
-					fmt.Printf("Restoring...\n %s\n", version)
-					copyResp, err := s3svc.CopyObject(bucket, *version.Key, *version.VersionId)
-					if err != nil {
-						log.Fatal(err.Error())
-					}
-					restored[*version.Key] = true
-					fmt.Printf("Restored:\n %s\n", copyResp)
-				}
-			}
+		err = s3svc.RestoreObjects(bucket, listVersionResp, restoreTime)
+		if err != nil {
+			log.Fatal(err)
 		}
+
 	case "list":
 		log.Fatal("Not impleneted")
 	}
