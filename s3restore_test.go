@@ -58,12 +58,12 @@ var _ = Describe("S3restore", func() {
 			Expect(s3run.Err).To(gbytes.Say("timestamp"))
 		})
 
-		It("Doesn't implement list", func() {
+		It("Identifies list command", func() {
 			command := "list"
 			s3run := s3r(command)
 			Eventually(s3run).Should(gexec.Exit())
 			Expect(s3run.ExitCode()).To(Equal(2))
-			Expect(s3run.Err).To(gbytes.Say("Not implemented"))
+			Expect(s3run.Err).To(gbytes.Say("Time baseline of versions"))
 		})
 
 	})

@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	Version = "Placeholder"
+	Version = "dev"
 )
 
 type ParsedArgs struct {
@@ -105,31 +105,34 @@ func parseTimestamp(timestamp string) (restoreTime time.Time) {
 func printUsage(command string, usage func()) func() {
 	fmt.Fprintf(os.Stderr, "s3r version %s\n", Version)
 	fmt.Fprintf(os.Stderr, "usage: s3r <command> <args>\n")
+	restoreHelp := " restore  Restore bucket objects\n"
+	listHelp := " list     List versions at the point of time.\n"
 	switch command {
 	case "restore":
 		return func() {
-			fmt.Fprintf(os.Stderr, " restore   Restore bucket objects\n")
+			fmt.Fprintf(os.Stderr, restoreHelp)
 			usage()
 		}
 	case "list":
 		return func() {
-			fmt.Fprintf(os.Stderr, " list   List object versions. Not implemented\n")
+			fmt.Fprintf(os.Stderr, listHelp)
 			usage()
 		}
 	default:
-		fmt.Fprintf(os.Stderr, " restore   Restore bucket objects\n list   List object versions\n")
+		fmt.Fprintf(os.Stderr, restoreHelp+listHelp)
 		return nil
 	}
 }
 
 func parseArguments() ParsedArgs {
 	restoreCommand := flag.NewFlagSet("restore", flag.ExitOnError)
-	bkt := restoreCommand.String("bucket", "", "Source bucket. Default none. Required.")
-	ts := restoreCommand.String("timestamp", "", "Restore point in time in UNIX timestamp format. Required.")
+	rbkt := restoreCommand.String("bucket", "", "Source bucket. Default none. Required.")
+	rts := restoreCommand.String("timestamp", "", "Restore point in time in UNIX timestamp format. Required.")
 	prx := restoreCommand.String("prefix", "", "Object prefix. Default none.")
 
 	listCommand := flag.NewFlagSet("list", flag.ExitOnError)
-	since := listCommand.String("since", "", "Not implemented")
+	lts := listCommand.String("timestamp", "", "Time baseline of versions. Required.")
+	lbkt := listCommand.String("bucket", "", "Source bucket. Default none. Required.")
 
 	if len(os.Args) == 1 {
 		printUsage("", func() {})
@@ -141,7 +144,7 @@ func parseArguments() ParsedArgs {
 		if err := restoreCommand.Parse(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
-		if *bkt == "" || *ts == "" {
+		if *rbkt == "" || *rts == "" {
 			restoreCommand.Usage = printUsage("restore", restoreCommand.PrintDefaults)
 			restoreCommand.Usage()
 			os.Exit(2)
@@ -149,8 +152,8 @@ func parseArguments() ParsedArgs {
 		return ParsedArgs{
 			CommandName: "restore",
 			Args: map[string]string{
-				"bucket":    *bkt,
-				"timestamp": *ts,
+				"bucket":    *rbkt,
+				"timestamp": *rts,
 				"prefix":    *prx,
 			},
 		}
@@ -159,9 +162,14 @@ func parseArguments() ParsedArgs {
 		if err := listCommand.Parse(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
-		restoreCommand.Usage = printUsage("list", listCommand.PrintDefaults)
-		restoreCommand.Usage()
-		fmt.Println(*since)
+		if *lbkt == "" || *lts == "" {
+			listCommand.Usage = printUsage("list", listCommand.PrintDefaults)
+			listCommand.Usage()
+			os.Exit(2)
+		}
+		listCommand.Usage = printUsage("list", listCommand.PrintDefaults)
+		listCommand.Usage()
+		fmt.Println(*lts)
 		os.Exit(2)
 	default:
 		fmt.Fprintf(os.Stderr, "%q is not valid command.\n", os.Args[1])
