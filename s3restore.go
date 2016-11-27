@@ -92,11 +92,29 @@ func (s *S3svc) RestoreObjects(bucket string, versions *s3.ListObjectVersionsOut
 	return nil
 }
 
+func (s *S3svc) ListVersionsAtTimestamp(bucket string, versions *s3.ListObjectVersionsOutput, listTime time.Time) error {
+
+	var listed map[string]bool
+	listed = make(map[string]bool)
+	fmt.Printf("%-40s %-34s %-30s\n", "object", "version", "timestamp")
+	for _, version := range versions.Versions {
+		if _, ok := listed[*version.Key]; !ok {
+			// Amazon S3 returns object versions in the order in which they were stored,
+			// with the most recently stored returned first.
+			if listTime.After(*version.LastModified) {
+				fmt.Printf("%-40s %-34s %-30s\n", *version.Key, *version.VersionId, *version.LastModified)
+				listed[*version.Key] = true
+			}
+		}
+	}
+	return nil
+}
+
 func parseTimestamp(timestamp string) (restoreTime time.Time) {
 
 	i, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed parsing timestamp:", err)
 	}
 	return time.Unix(i, 0)
 
@@ -128,11 +146,12 @@ func parseArguments() ParsedArgs {
 	restoreCommand := flag.NewFlagSet("restore", flag.ExitOnError)
 	rbkt := restoreCommand.String("bucket", "", "Source bucket. Default none. Required.")
 	rts := restoreCommand.String("timestamp", "", "Restore point in time in UNIX timestamp format. Required.")
-	prx := restoreCommand.String("prefix", "", "Object prefix. Default none.")
+	rprx := restoreCommand.String("prefix", "", "Object prefix. Default none.")
 
 	listCommand := flag.NewFlagSet("list", flag.ExitOnError)
 	lts := listCommand.String("timestamp", "", "Time baseline of versions. Required.")
 	lbkt := listCommand.String("bucket", "", "Source bucket. Default none. Required.")
+	lprx := listCommand.String("prefix", "", "Object prefix. Default none.")
 
 	if len(os.Args) == 1 {
 		printUsage("", func() {})
@@ -154,7 +173,7 @@ func parseArguments() ParsedArgs {
 			Args: map[string]string{
 				"bucket":    *rbkt,
 				"timestamp": *rts,
-				"prefix":    *prx,
+				"prefix":    *rprx,
 			},
 		}
 
@@ -167,10 +186,14 @@ func parseArguments() ParsedArgs {
 			listCommand.Usage()
 			os.Exit(2)
 		}
-		listCommand.Usage = printUsage("list", listCommand.PrintDefaults)
-		listCommand.Usage()
-		fmt.Println(*lts)
-		os.Exit(2)
+		return ParsedArgs{
+			CommandName: "list",
+			Args: map[string]string{
+				"bucket":    *lbkt,
+				"timestamp": *lts,
+				"prefix":    *lprx,
+			},
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "%q is not valid command.\n", os.Args[1])
 		os.Exit(2)
@@ -182,24 +205,27 @@ func main() {
 	s3svc := NewS3svc()
 	args := parseArguments()
 
+	bucket := args.Args["bucket"]
+	prefix := args.Args["prefix"]
+	timestamp := args.Args["timestamp"]
+
+	listVersionResp, err := s3svc.ListVersions(bucket, prefix)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	parsedTimestamp := parseTimestamp(timestamp)
 	switch args.CommandName {
 	case "restore":
-		bucket := args.Args["bucket"]
-		prefix := args.Args["prefix"]
-		timestamp := args.Args["timestamp"]
 
-		listVersionResp, err := s3svc.ListVersions(bucket, prefix)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-
-		restoreTime := parseTimestamp(timestamp)
-		err = s3svc.RestoreObjects(bucket, listVersionResp, restoreTime)
+		err = s3svc.RestoreObjects(bucket, listVersionResp, parsedTimestamp)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 	case "list":
-		log.Fatal("Not impleneted")
+		err = s3svc.ListVersionsAtTimestamp(bucket, listVersionResp, parsedTimestamp)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
